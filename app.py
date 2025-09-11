@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+from pathlib import Path
 
 st.title("Llistats: (1) grup vàlid i (2) sense grup vàlid excloent els del llistat principal")
 
@@ -10,8 +11,8 @@ COL_GRUP     = 47   # Grup
 COL_NOM      = 6    # Nom
 COL_COGNOM1  = 7    # Primer cognom
 COL_COGNOM2  = 8    # Segon cognom
-COL_DNI      = 9    # DNI (ajusta si cal)
-COL_CORREU   = 11   # Correu corporatiu (ajusta si cal)
+COL_DNI      = 9    # DNI 
+COL_CORREU   = 11   # Correu corporatiu 
 
 # Llista de grups exactes
 GRUPS = [
@@ -25,7 +26,7 @@ GRUPS_SET = set(GRUPS)
 RE_ALUMNE = re.compile(r"\b(alumno|alumne)\b", flags=re.IGNORECASE)
 
 def make_student_key(row: pd.Series) -> str:
-    """Clau d'alumne per deduplicar i excloure: DNI si existeix; en cas contrari Nom+Cognoms."""
+    """Clau d'alumne per deduplicar/excloure: DNI si hi és; si no, Nom+Cognoms."""
     dni = (row.get("DNI", "") or "").strip()
     if dni:
         return f"DNI:{dni}"
@@ -35,7 +36,7 @@ def make_student_key(row: pd.Series) -> str:
     return f"NOM:{nom}|C1:{c1}|C2:{c2}"
 
 def dedup_first_appearance(df_in: pd.DataFrame) -> pd.DataFrame:
-    """Conserva la primera aparició per alumne (segons ordre original) usant la clau d'alumne."""
+    """Conserva la primera aparició per alumne segons ordre original (requereix __ordre__)."""
     df = df_in.copy()
     if "__ordre__" not in df.columns:
         df["__ordre__"] = range(len(df))
@@ -44,14 +45,38 @@ def dedup_first_appearance(df_in: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values("__ordre__", kind="stable")
     return df
 
-arxiu = st.file_uploader("Puja el teu Excel (.xls o .xlsx)", type=["xls", "xlsx"])
+def read_excel_any(uploaded):
+    """Llegeix .xls/.xlsx amb motors adequats i errors amables si falta un motor."""
+    name = getattr(uploaded, "name", "fitxer.xlsx")
+    ext = Path(name).suffix.lower()
+    try:
+        if ext == ".xls":
+            try:
+                import xlrd  # noqa: F401
+            except ImportError:
+                st.error("Aquest servidor no té el paquet **xlrd** per llegir arxius **.xls**. "
+                         "Solucions: (a) puja el fitxer convertit a **.xlsx**, o (b) afegeix `xlrd>=2.0.1` al `requirements.txt` i redeploy.")
+                return None
+            return pd.read_excel(uploaded, engine="xlrd", header=None)
+        else:
+            # per defecte tractem la resta com .xlsx
+            try:
+                import openpyxl  # noqa: F401
+            except ImportError:
+                st.error("Falta **openpyxl** per llegir **.xlsx**. Afegeix `openpyxl>=3.1` al `requirements.txt` i redeploy.")
+                return None
+            return pd.read_excel(uploaded, engine="openpyxl", header=None)
+    except Exception as e:
+        st.error("No s'ha pogut llegir l'arxiu. Revisa el format o converteix-lo a .xlsx.")
+        st.exception(e)
+        return None
 
-if arxiu:
-    # Llegim sense encapçalaments perquè els índexs siguin 0..N
-    if arxiu.name.endswith(".xls"):
-        df = pd.read_excel(arxiu, engine="xlrd", header=None)
-    else:
-        df = pd.read_excel(arxiu, engine="openpyxl", header=None)
+uploaded = st.file_uploader("Puja el teu Excel (.xls o .xlsx)", type=["xls", "xlsx"])
+
+if uploaded:
+    df = read_excel_any(uploaded)
+    if df is None:
+        st.stop()
 
     st.caption(f"Arxiu carregat: {df.shape[0]} files × {df.shape[1]} columnes")
     st.write("Vista prèvia:")
@@ -64,7 +89,7 @@ if arxiu:
         st.error(f"Columnes fora de rang: {fora_rang}. L'arxiu té {df.shape[1]} columnes (0..{df.shape[1]-1}).")
         st.stop()
 
-    # Normalitzar a text
+    # Normalitzar a text (evita errors de tipus PyArrow)
     df = df.fillna("").astype(str)
 
     # --- Filtres base ---
@@ -94,10 +119,9 @@ if arxiu:
 
         # Dedup per alumne (primera aparició)
         llistat_final = dedup_first_appearance(llistat).copy()
-        # Guarda les claus d'alumnes que SÍ tenen grup vàlid (per excloure del 2n llistat)
+        # Claus per excloure del llistat 2
         llistat_final["__key__"] = llistat_final.apply(make_student_key, axis=1)
         keys_principal = set(llistat_final["__key__"].tolist())
-        # Neteja columna auxiliar abans de mostrar/descarregar
         llistat_final = llistat_final.drop(columns=["__key__"])
 
         st.subheader("(1) Llistat principal — primera aparició per alumne")
@@ -112,9 +136,9 @@ if arxiu:
             mime="text/csv"
         )
 
-    # ========== (2) SEGON LLISTAT: ALUMNE + SENSE GRUP VÀLID, EXCLOENT ELS DEL (1) ==========
+    # ========== (2) LLISTAT: ALUMNE + SENSE GRUP VÀLID, EXCLOENT PRINCIPAL ==========
     filtre_sense_grup = filtre_alumne & (~filtre_grup_valid)
-    st.write(f"(2) Files amb 'alumne' però sense grup vàlid (abans d'excloure els del principal): **{int(filtre_sense_grup.sum())}**")
+    st.write(f"(2) Files amb 'alumne' però sense grup vàlid (abans d'excloure principal): **{int(filtre_sense_grup.sum())}**")
 
     if int(filtre_sense_grup.sum()) == 0:
         st.info("No hi ha files per al segon llistat (alumne sense grup vàlid).")
@@ -126,7 +150,7 @@ if arxiu:
         llistat_sense["Verificació DNI"] = ""
         llistat_sense["__ordre__"] = llistat_sense.index
 
-        # Calcula la clau d'alumne i EXCLOU els que ja estan al llistat principal
+        # Exclou alumnes que ja són al principal
         llistat_sense["__key__"] = llistat_sense.apply(make_student_key, axis=1)
         if keys_principal:
             llistat_sense = llistat_sense[~llistat_sense["__key__"].isin(keys_principal)]
@@ -134,7 +158,6 @@ if arxiu:
         if llistat_sense.empty:
             st.info("Tots els alumnes sense grup vàlid ja apareixen al llistat principal; no hi ha cap pendent.")
         else:
-            # Dedup per alumne (primera aparició) i neteja de columnes auxiliars
             llistat_sense_final = dedup_first_appearance(llistat_sense).drop(columns=["__key__"])
 
             st.subheader("(2) Llistat sense grup vàlid — excloent els del principal (primera aparició)")

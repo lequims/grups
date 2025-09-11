@@ -1,0 +1,65 @@
+# --- Python / Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Extensiones compiladas
+*.so
+*.pyd
+*.dll
+
+# --- Entornos virtuales ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Construcción / empaquetado ---
+build/
+dist/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
+*.whl
+
+# --- Tests / cobertura / caches ---
+.pytest_cache/
+.coverage
+.coverage.*
+.cache/
+htmlcov/
+.tox/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+
+# --- Logs y temporales ---
+*.log
+logs/
+tmp/
+temp/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.orig
+
+# --- SO ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Streamlit ---
+# Mantén config.toml si lo usas; ignora secretos
+.streamlit/**/secrets.toml
+
+# --- Datos locales (opcional) ---
+# Descomenta si sueles probar con ficheros grandes locales
+# *.csv
+# *.xls
+# *.xlsx
+# data/
