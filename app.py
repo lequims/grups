@@ -11,7 +11,7 @@ COL_GRUP     = 47   # Grup
 COL_NOM      = 6    # Nom
 COL_COGNOM1  = 7    # Primer cognom
 COL_COGNOM2  = 8    # Segon cognom
-COL_DNI      = 9    # DNI 
+COL_DNI      = 4    # DNI 
 COL_CORREU   = 11   # Correu corporatiu 
 
 # Llista de grups exactes
